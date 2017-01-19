@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Face tracker</title>
+		<meta charset="utf-8">
+		<style>
+      #container {
+        position : relative;
+      }
+      
+      #canvas {
+        position : absolute;
+        left : 0;
+        top : 0;
+      }
+		</style>
+	</head>
+	<body>
+		<script src="./js/utils.js"></script>
+		<script src="./js/clmtrackr.js"></script>
+		<script src="./models/model_pca_20_svm.js"></script>
+		<div id="content">
+			<h2>Example</h2>
+      <div id="container">
+        <video id="video" width="368" height="288" autoplay loop>
+          <source src="./media/vib-iPhone.m4v" />
+        </video>
+        <canvas id="canvas" width="368" height="288"></canvas>
+      </div>
+      <p>Printing coordinates of the first 10 points in facial features:</p>
+      <p id="positions"></p>
+			<script>
+
+        var midi, midiout;
+
+        // Web midi input (--enable-web-midi)
+
+        try {
+          navigator.requestMIDIAccess().then( onMIDISuccess, onMIDIFailure );
+        } catch(e) {
+          console.error(e);
+        }
+
+        ///////////////////
+        function onMIDISuccess( midiAccess ) {
+          midi = midiAccess;
+            console.log( "MIDI ready!" );
+            var outputs = midiAccess.outputs();
+            for (var key in outputs) {
+              if (outputs[key].manufacturer == "Apple Inc." && outputs[key].name == "Bus 1")
+                midiout = outputs[key];
+            }
+        }
+
+        ///////////////////
+        function onMIDIFailure(msg) {
+          console.log( "Failed to get MIDI access - " + msg );
+        }
+
+        //////////////////
+
+				var videoInput = document.getElementById('video');
+        
+        var ctracker = new clm.tracker();
+        ctracker.init(pModel);
+        ctracker.start(videoInput);
+				
+				function positionLoop() {
+          requestAnimationFrame(positionLoop);
+
+          var positions = ctracker.getCurrentPosition();
+          // do something with the positions ...
+          // print the positions
+          var positionString = "";
+
+          if (positions) {
+            for (var p = 0;p < 10;p++) {
+
+              //Send values of parameters as midi
+              if (midiout) {
+                var posx = positions[p][0].toFixed(2);
+                midiout.send([144, p, posx]);
+              }
+
+              positionString += "featurepoint "+p+" : ["+positions[p][0].toFixed(2)+","+positions[p][1].toFixed(2)+"]<br/>";
+            }
+            document.getElementById('positions').innerHTML = positionString;
+          }
+        }
+
+        positionLoop();
+				
+				var canvasInput = document.getElementById('canvas');
+				var cc = canvasInput.getContext('2d');
+				function drawLoop() {
+
+          requestAnimationFrame(drawLoop);
+          cc.clearRect(0, 0, canvasInput.width, canvasInput.height);
+          ctracker.draw(canvasInput);
+        }
+        drawLoop();
+			</script>
+		</div>
+	</body>
+</html>

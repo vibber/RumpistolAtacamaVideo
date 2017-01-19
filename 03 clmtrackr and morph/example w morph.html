@@ -1,0 +1,190 @@
+<!doctype html>
+	<head>
+		<title>Face tracker</title>
+		<style>
+      #container {
+        position : relative;
+      }
+      
+      #canvas {
+        position : absolute;
+        left : 0;
+        top : 0;
+      }
+
+    <style>
+      body {
+        background:#000;
+        color:#fff;
+        padding:0;
+        margin:0;
+        font-weight: bold;
+        overflow:hidden;
+      }
+
+      #info {
+        position: absolute;
+        top: 0px; width: 100%;
+        color: #ffffff;
+        padding: 5px;
+        font-family: Monospace;
+        font-size: 13px;
+        text-align: center;
+        z-index:100;
+      }
+
+      #ctrl {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        width: 200px;
+        color: #ffffff;
+        padding: 5px;
+        font-family: Monospace;
+        font-size: 13px;
+        z-index:100;
+      }
+      #webgl {
+        position: fixed;
+          right: 0px;
+          top: 0px;
+      }
+
+      a { color:red }
+
+		</style>
+	</head>
+	<body>
+		<script src="./js/utils.js"></script>
+		<script src="./js/clmtrackr.js"></script>
+		<script src="./models/model_pca_20_svm.js"></script>
+
+    <script src="lib/three.min.js"></script>
+
+    <script src="lib/Detector.js"></script>
+    <script src="lib/stats.min.js"></script>
+
+		<div id="content">
+      <div id="container">
+        <p id="string"></p>
+        <video id="video" width="368" height="288" autoplay loop>
+          <source src="./media/vib-iPhone.m4v" />
+        </video>
+        <canvas id="canvas" width="368" height="288"></canvas>
+      </div>
+      <p id="positions"></p>
+			<script>
+				var videoInput = document.getElementById('video');
+        
+        var ctracker = new clm.tracker();
+        ctracker.init(pModel);
+        ctracker.start(videoInput);
+				
+				function positionLoop() {
+          requestAnimationFrame(positionLoop);
+
+          //Parameters
+          var parameters = ctracker.getCurrentParameters();
+          var paramString = "";
+          if (parameters) {
+            parameters.forEach( function(el, i) {
+              paramString += "parameter " + i + ": " + el + "<br>";
+            });
+          }
+          document.getElementById('positions').innerHTML = paramString;
+
+          document.getElementById('string').innerHTML = parameters[6];
+        }
+        positionLoop();
+				
+				var canvasInput = document.getElementById('canvas');
+				var cc = canvasInput.getContext('2d');
+				
+
+        function drawLoop() {
+          requestAnimationFrame(drawLoop);
+          cc.clearRect(0, 0, canvasInput.width, canvasInput.height);
+          ctracker.draw(canvasInput);
+        }
+        drawLoop();
+
+        // WEBGL ////////////
+
+        var mesh;
+
+        if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+        var container, stats;
+
+        var camera, scene, renderer;
+
+        var geometry, objects;
+
+        var mouseX = 0, mouseY = 0;
+
+        var mesh;
+
+        init();
+
+        function init() {
+
+          container = document.createElement( 'div' );
+          document.body.appendChild( container );
+          container.id = "webglParent";
+
+          scene = new THREE.Scene();
+
+          camera = new THREE.PerspectiveCamera( 45, 640/ 480 , 0.1, 15000 );
+          camera.position.z = 0.3;
+
+            camera.lookAt( new THREE.Vector3(0, 0, 0) );
+            scene.add(camera);
+
+
+          scene.fog = new THREE.Fog( 0x000000, 1, 15000 );
+
+          var light = new THREE.PointLight( 0xffffff );
+          light.position.set( 100, 100, 100 );
+          scene.add( light );
+
+          var light = new THREE.AmbientLight( 0x111111 );
+          scene.add( light );
+
+
+          var loader = new THREE.JSONLoader();
+                loader.load("obj/param03.json.js", function( geometry ) {
+                    // here i'm creating the model
+                    THREE.GeometryUtils.center(geometry);
+
+                    //It's very important to set morphTargets: true in the material!
+                    mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial( { morphTargets: true, ambient: 0x000000, specular: 0x999999, shininess: 30, side: THREE.DoubleSide, shading: THREE.SmoothShading }));
+
+                    scene.add( mesh );
+                    animate();
+                },"js");
+
+          renderer = new THREE.WebGLRenderer(  );
+          renderer.setSize( 640, 480 );
+        renderer.domElement.id = "webgl";
+          renderer.sortObjects = false;
+          document.appendChild( renderer.domElement );
+        }
+
+        function animate() {
+
+          requestAnimationFrame( animate );
+          render();
+
+        }
+
+        function render() {
+
+          camera.lookAt( scene.position );
+
+          renderer.render( scene, camera );
+
+        }       
+			</script>
+		</div>
+	</body>
+</html>

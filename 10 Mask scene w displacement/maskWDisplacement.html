@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - materials - normal map</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#000;
+				color:#fff;
+				padding:0;
+				margin:0;
+				font-weight: bold;
+				overflow:hidden;
+			}
+
+			#vt { display:none }
+			#vt, #vt a { color:orange; }
+		</style>
+	</head>
+
+	<body>
+
+		<div id="info" disp>
+			<div id="vt">displacement mapping needs vertex textures (GPU with Shader Model 3.0)</div>
+		</div>
+
+		<script src="js/libs/three66.js"></script>
+		<script src="js/loaders/BinaryLoader.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+        <script src="js/mymidi.js"></script>
+
+        <script src="js/shaders/CopyShader.js"></script>
+        <script src="js/postprocessing/EffectComposer.js"></script>
+        <script src="js/postprocessing/RenderPass.js"></script>
+        <script src="js/postprocessing/MaskPass.js"></script>
+        <script src="js/postprocessing/ShaderPass.js"></script>
+        <script src="js/shaders/BleachBypassShader.js"></script>
+        <script src="js/shaders/FXAAShader.js"></script>
+
+
+		<script>
+
+			var statsEnabled = false;
+
+			var container, stats, loader;
+
+			var camera, scene, renderer;
+
+			var mesh, zmesh, lightMesh, geometry;
+			var mesh1, mesh2, group;
+
+			var spotLight, pointLight, ambientLight;
+
+			var windowHalfX = (window.innerWidth / 2);
+			var windowHalfY = (window.innerHeight / 2);
+
+			var r = 0.0;
+
+			var uniforms;
+
+			var composer, dpr, effectFXAA, renderScene;
+
+			var glitchTexture, material1;
+
+			var RTTcamera, RTTscene, renderer, RTTmaterial, RTTplane, RTTresult;
+
+			var midiDisabled = false;
+
+			////////
+			// SLIIDER
+
+			function updateZoom() {
+				var zoom = slii.inputs.cameraZoom.value;
+				var yPos = slii.inputs.cameraYPos.value;
+				camera.left = (window.innerWidth / - 2) * zoom;
+				camera.right = (window.innerWidth / 2) * zoom;
+				camera.top = ((window.innerHeight / 2) * zoom) + yPos;
+				camera.bottom = ((window.innerHeight / - 2) * zoom) + yPos;
+
+				camera.updateProjectionMatrix();
+			}
+
+		    var slii = {};
+		    slii.inputs = {
+		        globalSpeed: { type: "number", label: "0. Global Speed", value: 1, maxValue: 10, minValue: 0.0 },
+		        pointLight1: { type: "number", label: "1. Point Light 1 intensity", value: 0, maxValue: 5, minValue: 0 },
+		        pointLight2: { type: "number", label: "2. Point Light 2 intensity", value: 0, maxValue: 5, minValue: 0 },
+		        spotLight: { type: "number", label: "3. Spot Light intensity", value: 0, maxValue: 5, minValue: 0 },
+		        dirLight2: { type: "number", label: "4. Directional Light 1 intensity", value: 0, maxValue: 5, minValue: 0 },
+		        dirLight3: { type: "number", label: "5. Directional Light 2 intensity", value: 0, maxValue: 5, minValue: 0 },
+		        headRotationSpeed: { type: "number", label: "6. Head rotation", value: 1, maxValue: 1, minValue: 0.0 },
+		        tex1Opacity: { type: "number", label: "7. Texture 1 Opacity", value: 0, maxValue: 1, minValue: 0 },
+		        tex2Opacity: { type: "number", label: "8. Texture 2 Opacity", value: 0, maxValue: 1, minValue: 0 },
+		        tex3Opacity: { type: "number", label: "9. Texture 3 Opacity", value: 0, maxValue: 1, minValue: 0 },
+		        tex1Speed: { type: "number", label: "10. Texture 1 animation Speed", value: 0, maxValue: 3, minValue: -3 },
+		        tex2Speed: { type: "number", label: "11. Texture 2 animation Speed", value: 0, maxValue: 3, minValue: -3 },
+		        tex3Speed: { type: "number", label: "12. Texture 3 animation Speed", value: 0, maxValue: 3, minValue: -3 },
+		        displacement: { type: "number", label: "13. Texture Displacement", value: 0, maxValue: 20, minValue: -10 },
+		        headsPos: { type: "number", label: "14. Heads Position", value: -10, maxValue: 50, minValue: -10.0 },
+		        headsTilt: { type: "number", label: "15. Heads Tilt", value: 0, maxValue: 1, minValue: -1 },
+		    	cameraZoom: { type: "number", label: "16. Camera Zoom", value: 0.7, maxValue: 3, minValue: 0.1, onChange: updateZoom },
+		    	cameraYPos: { type: "number", label: "17. Camera Position Y", value: 0, maxValue: 300, minValue: 0, onChange: updateZoom },
+				selectMidi: { type: "dropdown", label: "Select midi input", options: valuesForMidiInput, onChange: changeMidiInput }
+		    }
+
+			init();
+
+			function init() {
+
+				//Fix for Retina screen - FXAA needs this?
+				dpr = 1;
+				if (window.devicePixelRatio !== undefined) {
+				  dpr = window.devicePixelRatio;
+				}
+
+				/////////////
+				//Scene for Render-to-texture
+
+				RTTcamera = new THREE.Camera();
+				RTTcamera.position.z = 1;
+
+				RTTscene = new THREE.Scene();
+
+				var tex1 = new THREE.ImageUtils.loadTexture("img/glitch/glitch01.png");
+				tex1.wrapS = THREE.RepeatWrapping;
+				tex1.wrapT = THREE.RepeatWrapping;
+
+				var tex2 = new THREE.ImageUtils.loadTexture("img/whiteblur.png");
+				tex2.wrapS = THREE.RepeatWrapping;
+				tex2.wrapT = THREE.RepeatWrapping;
+
+				var tex3 = new THREE.ImageUtils.loadTexture("img/glitch/glitch03b.png");
+				tex3.wrapS = THREE.RepeatWrapping;
+				tex3.wrapT = THREE.RepeatWrapping;
+
+				RTTmaterial1 = new THREE.MeshBasicMaterial( { map: tex1 } );
+				RTTmaterial1.transparent = true;
+				RTTmaterial1.blending = THREE.AdditiveBlending;
+
+				RTTmaterial2 = new THREE.MeshBasicMaterial( { map: tex2 } );
+				RTTmaterial2.transparent = true;
+				RTTmaterial2.blending = THREE.AdditiveBlending;
+
+				RTTmaterial3 = new THREE.MeshBasicMaterial( { map: tex3 } );
+				RTTmaterial3.transparent = true;
+				RTTmaterial3.blending = THREE.AdditiveBlending;
+
+				var materials = [RTTmaterial1, RTTmaterial2, RTTmaterial3];
+
+				RTTplane1 = new THREE.SceneUtils.createMultiMaterialObject( new THREE.PlaneGeometry( 2, 2 ), materials );
+				RTTscene.add( RTTplane1 );
+
+				/////////////
+				// Prepare framebuffer/texture
+
+				var renderTargetParams = {
+				      minFilter:THREE.LinearFilter,
+				      stencilBuffer:false,
+				      depthBuffer:false,
+				      wrapS: THREE.RepeatWrapping,
+				      wrapT: THREE.RepeatWrapping	      
+				    };
+				RTTresult = new THREE.WebGLRenderTarget( 512, 512, renderTargetParams ); 				
+
+				// Main scene
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				// CAMERA
+
+				var zoom = slii.inputs.cameraZoom.value;
+				camera = new THREE.OrthographicCamera( (window.innerWidth / - 2) * zoom , (window.innerWidth / 2) * zoom , (window.innerHeight / 2) * zoom , (window.innerHeight / - 2) * zoom , -10000, 10000 );
+				camera.position.z =  1500;
+
+				scene = new THREE.Scene();
+
+				// LIGHTS
+
+				ambientLight = new THREE.AmbientLight( 0x111111 );
+				scene.add( ambientLight ); 
+
+				pointLight1 = new THREE.PointLight( 0xff0000 );
+				pointLight1.position.z = 10000;
+				pointLight1.distance = 4000;
+				scene.add( pointLight1 );
+
+				pointLight2 = new THREE.PointLight( 0x0000ff );
+				pointLight2.position.x = -1000;
+				pointLight2.position.z = 1000;
+				pointLight2.distance = 2000;
+				scene.add( pointLight2 );
+
+				spotLight = new THREE.SpotLight( 0xaaaaaa );
+				spotLight.position.set( 1000, 500, 1000 );
+				spotLight.castShadow = true;
+				spotLight.shadowCameraNear = 500;
+				spotLight.shadowCameraFov = 70;
+				spotLight.shadowBias = 0.001;
+				spotLight.shadowMapWidth = 1024;
+				spotLight.shadowMapHeight = 1024;
+				spotLight.intensity = 3.0;
+				scene.add( spotLight );
+
+				directionalLight2 = new THREE.DirectionalLight( 0xffffff);
+				directionalLight2.position.set( -1, 1, 0.5 ).normalize();
+				scene.add( directionalLight2 );
+
+				directionalLight3 = new THREE.DirectionalLight( 0xaaff66 );
+				directionalLight3.position.set( 1, 1, 0.5 ).normalize();
+				scene.add( directionalLight3 );
+
+				// light representation
+
+				var sphere = new THREE.SphereGeometry( 100, 16, 8 );
+				lightMesh = new THREE.Mesh( sphere, new THREE.MeshBasicMaterial( { color: 0xffaa00 } ) );
+				lightMesh.position = pointLight1.position;
+				lightMesh.scale.x = lightMesh.scale.y = lightMesh.scale.z = 0.05;
+				//scene.add( lightMesh );
+
+				//Cube map for reflections
+
+				var path = "textures/cube/SwedishRoyalCastle/";
+				var format = '.jpg';
+				var urls = [
+						path + 'px' + format, path + 'nx' + format,
+						path + 'py' + format, path + 'ny' + format,
+						path + 'pz' + format, path + 'nz' + format
+					];
+
+				var reflectionCube = THREE.ImageUtils.loadTextureCube( urls );
+
+				// common material parameters
+
+				var ambient = 0x050505, 
+				diffuse = 0x001122, 
+				specular = 0xffffff, 
+				shininess = 30, 
+				scale = 11;
+
+				// // Textures
+
+				// glitchTexture = new THREE.ImageUtils.loadTexture("img/glitch/glitch01.png");
+				// glitchTexture.wrapS = THREE.RepeatWrapping; 
+				// glitchTexture.wrapT = THREE.RepeatWrapping; 
+
+				// var whiteTexture = new THREE.ImageUtils.loadTexture("img/white.jpg");
+
+				// Shader for material
+
+				var shader = THREE.ShaderLib[ "normalmap" ];
+				uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+
+				uniforms[ "enableDiffuse" ].value = false;
+				uniforms[ "enableSpecular" ].value = false;
+				uniforms[ "enableReflection" ].value = true;
+				uniforms[ "enableDisplacement" ].value = true;
+				uniforms[ "tNormal" ].value = RTTresult; //glitchTexture;
+				uniforms[ "tDisplacement" ].value = RTTresult; //glitchTexture;
+				uniforms[ "uDisplacementBias" ].value = 0; //- 0.428408;
+				uniforms[ "uDisplacementScale" ].value = slii.inputs.displacement.value; //20.436143;
+				uniforms[ "uNormalScale" ].value.y = -1;
+				uniforms[ "diffuse" ].value.setHex( diffuse );
+				uniforms[ "specular" ].value.setHex( specular );
+				uniforms[ "ambient" ].value.setHex( ambient );
+				uniforms[ "shininess" ].value = shininess;
+				uniforms[ "tCube" ].value = reflectionCube;
+				uniforms[ "reflectivity" ].value = 0.1;
+				uniforms[ "diffuse" ].value.convertGammaToLinear();
+				uniforms[ "specular" ].value.convertGammaToLinear();
+				uniforms[ "ambient" ].value.convertGammaToLinear();
+
+
+				var parameters = { fragmentShader: shader.fragmentShader, vertexShader: shader.vertexShader, uniforms: uniforms, lights: true, fog: false };
+				material1 = new THREE.ShaderMaterial( parameters );
+
+				//material1 = new THREE.MeshNormalMaterial( {} );
+
+				// Load mesh
+
+				loader = new THREE.JSONLoader();
+				loader.load( "obj/params_mask_scaled_cm.json.js", function( geometry ) { createScene( geometry, scale, material1 ) } );
+
+				// Renderer
+
+				renderer = new THREE.WebGLRenderer( { alpha: false, antialias: true } );
+				
+				//removing a warning in the console - https://github.com/mrdoob/three.js/issues/4469
+				renderer.context.getProgramInfoLog = function () { return '' };
+
+				renderer.setSize( window.innerWidth, window.innerHeight);
+				container.appendChild( renderer.domElement );
+
+				renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+				renderer.shadowMapEnabled = true;
+				renderer.shadowMapType = THREE.PCFShadowMap;
+
+				//Post effects
+
+				renderScene = new THREE.RenderPass(scene, camera);
+				effectFXAA = new THREE.ShaderPass(THREE.FXAAShader);
+				effectFXAA.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+
+				effectFXAA2 = new THREE.ShaderPass(THREE.FXAAShader);
+				effectFXAA2.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+				effectFXAA2.renderToScreen = true;
+
+
+				composer = new THREE.EffectComposer(renderer);
+				composer.setSize(window.innerWidth * dpr, window.innerHeight * dpr);
+				composer.addPass(renderScene);
+				composer.addPass(effectFXAA);
+				composer.addPass(effectFXAA2);
+
+				// Display / hide warning
+
+				document.getElementById( "vt" ).style.display = renderer.supportsVertexTextures() ? "none" : "block";
+
+				// Stats
+
+				if ( statsEnabled ) {
+
+					stats = new Stats();
+					stats.domElement.style.position = 'absolute';
+					stats.domElement.style.top = '0px';
+					stats.domElement.style.zIndex = 100;
+					container.appendChild( stats.domElement );
+
+				}
+
+				// Events
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			//////////////////////////////
+
+			function onWindowResize() {
+
+				windowHalfX = (window.innerWidth / 2);
+				windowHalfY = (window.innerHeight / 2);
+
+				updateZoom();
+
+ 				effectFXAA.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+ 				effectFXAA2.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+  				composer.setSize(window.innerWidth * dpr, window.innerHeight * dpr);
+
+
+				renderer.setSize( window.innerWidth, window.innerHeight);
+
+			}
+
+			function createScene( geometry, scale, material1 ) {
+				//GROUP
+
+				group = new THREE.Object3D();
+				scene.add(group);
+
+				//GEOMETRY
+
+				geometry.computeFaceNormals();
+				geometry.computeVertexNormals(); //Some models don't have normals. Next line needs this
+				geometry.computeTangents();
+
+				//MESH
+
+				mesh1 = new THREE.Mesh( geometry, material1 );
+				mesh1.scale.set( scale, scale, scale );
+				group.add( mesh1 );
+
+				// mesh2 = new THREE.Mesh( geometry, material1 );
+				// mesh2.scale.set( scale, scale, scale );
+				// mesh2.rotation.y = Math.PI;
+				// mesh2.visible = false;
+				// group.add( mesh2 );
+
+				onWindowResize();
+				animate();
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				render();
+				if ( statsEnabled ) stats.update();
+
+			}
+
+			function render() {
+
+				//SLIIDER PARAMETERS
+
+				group.rotation.y += 0.01 * slii.inputs.globalSpeed.value * slii.inputs.headRotationSpeed.value;
+				mesh1.position.z = slii.inputs.headsPos.value;
+				//mesh2.position.z = - slii.inputs.headsPos.value;
+				mesh1.rotation.x = slii.inputs.headsTilt.value;
+				//mesh2.rotation.x = - slii.inputs.headsTilt.value;
+				pointLight1.intensity = slii.inputs.pointLight1.value;
+				pointLight2.intensity = slii.inputs.pointLight2.value;
+				spotLight.intensity = slii.inputs.spotLight.value;
+				directionalLight2.intensity = slii.inputs.dirLight2.value;
+				directionalLight3.intensity = slii.inputs.dirLight3.value;
+				uniforms[ "uDisplacementScale" ].value = slii.inputs.displacement.value;
+				RTTmaterial1.opacity = slii.inputs.tex1Opacity.value;
+				RTTmaterial2.opacity = slii.inputs.tex2Opacity.value;
+				RTTmaterial3.opacity = slii.inputs.tex3Opacity.value;
+
+				//Rotate light
+
+				lightMesh.position.x = 2500 * Math.cos( r );
+				lightMesh.position.z = 2500 * Math.sin( r );
+
+				r += 0.01 * slii.inputs.globalSpeed.value;
+
+				/////////////
+				//Animate RTT textures
+
+				if (RTTmaterial1.map.offset.y == 1)
+					RTTmaterial1.map.offset.y = 0;
+				RTTmaterial1.map.offset.y += 0.001 * slii.inputs.globalSpeed.value * slii.inputs.tex1Speed.value;
+
+				if (RTTmaterial2.map.offset.y == 1)
+					RTTmaterial2.map.offset.y = 0;
+				RTTmaterial2.map.offset.y += 0.001 * slii.inputs.globalSpeed.value * slii.inputs.tex2Speed.value;
+
+				if (RTTmaterial3.map.offset.y == 1)
+					RTTmaterial3.map.offset.y = 0;
+				RTTmaterial3.map.offset.y += 0.001 * slii.inputs.globalSpeed.value * slii.inputs.tex3Speed.value;
+
+				//Render RTT scene
+
+				renderer.render( RTTscene, RTTcamera, RTTresult, true );
+
+				//Render main scene
+
+	            composer.render();
+
+			}
+
+
+		</script>
+
+	</body>
+</html>

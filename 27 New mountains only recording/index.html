@@ -1,0 +1,30 @@
+<html>
+	<head>
+		<script>
+			// Load native UI library
+			var gui = require('nw.gui');
+
+			// Get the current window
+			var win = gui.Window.get();
+
+			//Open the source application in new window and inject javascript
+			var new_win = gui.Window.open('source/index.html', 
+				{
+				  position: 'center',
+				  width: 1920,
+				  height: 870,
+				  "inject-js-start": "js/inject.js"
+			});
+
+			win.on('loaded', function() {
+				//Make some variables available in the new window
+				new_win.window.fs = require("fs");
+				new_win.window.nwWindow = new_win;
+  			});
+
+		</script>
+	</head>
+	<body>
+		Node-webkit page
+	</body>
+</html>

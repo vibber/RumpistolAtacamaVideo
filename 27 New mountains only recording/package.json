@@ -1,0 +1,12 @@
+{
+  "main": "index.html",
+  "name": "nw-demo",
+  "window": {
+    "width":640,
+    "height":250
+  },
+  "webkit": {
+    "plugin": true
+  },
+  "node-remote" : "<local>"
+}

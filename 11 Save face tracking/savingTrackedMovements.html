@@ -1,0 +1,273 @@
+<!doctype html>
+	<head>
+		<title>Face tracker</title>
+		<style>
+
+
+      body {
+        background:#000;
+        color:#fff;
+        padding:0;
+        margin:0;
+        font-weight: bold;
+        overflow:hidden;
+      }
+
+      #info {
+        position: absolute;
+        top: 0px; width: 100%;
+        color: #ffffff;
+        padding: 5px;
+        font-family: Monospace;
+        font-size: 13px;
+        text-align: center;
+        z-index:100;
+      }
+
+      #ctrl {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        width: 200px;
+        color: #ffffff;
+        padding: 5px;
+        font-family: Monospace;
+        font-size: 13px;
+        z-index:100;
+      }
+      #webgl {
+        position: absolute;
+          right: 0px;
+          top: 0px;
+      }
+
+      a { color:red }
+
+		</style>
+	</head>
+	<body>
+		<script src="./js/utils.js"></script>
+		<script src="./js/clmtrackr.js"></script>
+		<script src="./models/model_pca_20_svm.js"></script>
+
+    <script src="lib/three.min.js"></script>
+    <script src="lib/stats.min.js"></script>
+    
+		<div id="content">
+      <div id="container">
+        <p id="string"></p>
+        <video id="video" width="368" height="288" autoplay controls>
+          <source src="./media/capture2new.mp4" />
+        </video>
+        <canvas id="canvas" width="368" height="288"></canvas>
+      </div>
+      <p id="positions"></p>
+			<script>
+
+        //RECORD TO FILE
+        var outputFile;
+        var nwWindow;
+        var outputData = [];
+        var fs = require('fs');
+        var recording;
+        var currentFrame = 0;
+        var vidIsPlaying = false;
+
+        var mode = 'RECORD'; //RECORD, PLAYBACK
+
+        // Load native UI library
+        var gui = require('nw.gui');
+
+        // Get the current window
+        nwWindow = gui.Window.get();
+
+        //The video element
+        var vid = document.getElementById("video");
+
+        function getScriptLocationPath() {
+          var mypath = window.location.pathname
+            .replace(/%20/g, " ");
+          var path = mypath.split("/");
+          path.pop();
+          return path.join("/") + "/";            
+        }
+
+
+
+        function initFileStream(fileName) {
+          return fs.createWriteStream(getScriptLocationPath() + fileName);
+        }
+
+        //Close file stream
+        nwWindow.on('close', function() {
+          this.close(true);
+          if (mode == 'RECORD') {
+            outputFile = initFileStream('myFile' + Math.random() + '.txt' );
+            outputFile.write(JSON.stringify(outputData));
+            outputFile.end();
+          }
+        });
+
+       vid.addEventListener("play", function () {
+         vidIsPlaying = true;
+       }, false);    
+
+        //
+
+        var parameters;
+				var videoInput = document.getElementById('video');
+        
+        var ctracker = new clm.tracker();
+        ctracker.init(pModel);
+        ctracker.start(videoInput);
+				
+				function positionLoop() {
+          requestAnimationFrame(positionLoop);
+
+          //Parameters
+          parameters = ctracker.getCurrentParameters();
+          var paramString = "";
+          if (parameters) {
+            parameters.forEach( function(el, i) {
+              paramString += "parameter " + i + ": " + el + "<br>";
+            });
+          }
+          document.getElementById('positions').innerHTML = paramString;
+
+          document.getElementById('string').innerHTML = parameters[6];
+        }
+        positionLoop();
+				
+				var canvasInput = document.getElementById('canvas');
+				var cc = canvasInput.getContext('2d');
+				
+
+        function drawLoop() {
+          requestAnimationFrame(drawLoop);
+          cc.clearRect(0, 0, canvasInput.width, canvasInput.height);
+          ctracker.draw(canvasInput);
+        }
+        drawLoop();
+
+        // WEBGL ////////////
+
+        var mesh;
+
+        var container, stats;
+
+        var camera, scene, renderer;
+
+        var geometry, objects;
+
+        var mouseX = 0, mouseY = 0;
+
+        var mesh;
+
+        init();
+
+        function init() {
+
+          container = document.createElement( 'div' );
+          document.body.appendChild( container );
+          container.id = "webgl";
+
+          scene = new THREE.Scene();
+
+          camera = new THREE.PerspectiveCamera( 45, 640/ 480 , 0.1, 15000 );
+          camera.position.z = 0.3;
+          camera.position.y = -0.2;
+
+            camera.lookAt( new THREE.Vector3(0, 0, 0) );
+            scene.add(camera);
+
+
+          scene.fog = new THREE.Fog( 0x000000, 1, 15000 );
+
+          var light = new THREE.PointLight( 0xffffff );
+          light.position.set( 100, 100, 100 );
+          scene.add( light );
+
+        // LIGHTS
+
+        dirLightAbove = new THREE.DirectionalLight( 0x1f85ee, 2 );
+        dirLightAbove.position.set(0, 1, -0.3);
+        scene.add(dirLightAbove);
+
+        dirLightBelow = new THREE.DirectionalLight( 0xa4a6a0, 2);
+        dirLightBelow.position.set(0, -1, -0.8);
+        scene.add(dirLightBelow);
+
+        dirLightLeft = new THREE.DirectionalLight( 0x93c8fe, 2);
+        dirLightLeft.position.set(-1, 0, -1.2);
+        scene.add(dirLightLeft);
+
+        dirLightRight = new THREE.DirectionalLight( 0x93c8fe, 2);
+        dirLightRight.position.set(1, 0, -1.2);
+        scene.add(dirLightRight);
+
+
+          var loader = new THREE.JSONLoader();
+          loader.load("obj/maskmorph.json.js", function( geometry ) {
+              // here i'm creating the model
+              THREE.GeometryUtils.center(geometry);
+
+              //It's very important to set morphTargets: true in the material!
+              mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial( { morphTargets: true, color: 0x222222, ambient: 0x000000, specular: 0xaaaaaa, shininess: 100, side: THREE.DoubleSide, shading: THREE.SmoothShading }));
+
+              scene.add( mesh );
+              animate();
+          },"js");
+
+          renderer = new THREE.WebGLRenderer(  );
+          renderer.setSize( 640, 480 );
+          renderer.sortObjects = false;
+          container.appendChild( renderer.domElement );
+        }
+
+        function animate() {
+
+          requestAnimationFrame( animate );
+          render();
+        }
+
+        function render() {
+
+          camera.lookAt( scene.position );
+
+          var rotation = THREE.Math.mapLinear( parameters[4], -64, 64, -0.7, 0.7 );
+          mesh.rotation.y = rotation; // -64 - 64 should be interpolated to -0.7-0.7
+
+          var headbend = THREE.Math.mapLinear( parameters[5], -37, 37, 0.3, -0.3 );
+          mesh.rotation.x = headbend;
+
+         //get the tracking value for morph of the mouth
+          morph01 = THREE.Math.mapLinear( parameters[6], -3, -16, 0, 0.3); //first two values is the range of the original data to map from. I narrow te range a bit in order to shut the mouth a bit
+          //mesh.morphTargetInfluences[ 1 ] = THREE.Math.smootherstep(morph01, 0, 1); //Smoothstep makes an easing curve
+          mesh.morphTargetInfluences[ 1 ] = morph01;
+
+          morph02 = THREE.Math.mapLinear( parameters[10], 2, 7, 0, 1 )
+          mesh.morphTargetInfluences[ 2  ] = morph02;
+
+          //
+
+          if (mode == 'RECORD' && vidIsPlaying && vid.ended == false) {
+            outputData.push(
+              {
+                time: vid.currentTime,
+                rotx: mesh.rotation.x,
+                roty: mesh.rotation.y,
+                morph01: mesh.morphTargetInfluences[ 1 ],
+                morph02: mesh.morphTargetInfluences[ 2 ],
+              }
+            );
+          }
+
+          //
+
+          renderer.render( scene, camera );
+
+        }     
+			</script>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+	<head>
+		<title>Face tracker</title>
+		<style>
+      #container {
+        position : relative;
+      }
+      
+      #canvas {
+        position : absolute;
+        left : 0;
+        top : 0;
+      }
+		</style>
+	</head>
+	<body>
+		<script src="./js/utils.js"></script>
+		<script src="./js/clmtrackr.js"></script>
+		<script src="./models/model_pca_20_svm.js"></script>
+		<div id="content">
+      <div id="container">
+        <p id="string"></p>
+        <video id="video" width="368" height="288" autoplay loop>
+          <source src="./media/vib-iPhone.m4v" />
+        </video>
+        <canvas id="canvas" width="368" height="288"></canvas>
+      </div>
+      <p id="positions"></p>
+			<script>
+				var videoInput = document.getElementById('video');
+        
+        var ctracker = new clm.tracker();
+        ctracker.init(pModel);
+        ctracker.start(videoInput);
+				
+				function positionLoop() {
+          requestAnimationFrame(positionLoop);
+
+          //Parameters
+          var parameters = ctracker.getCurrentParameters();
+          var paramString = "";
+          if (parameters) {
+            parameters.forEach( function(el, i) {
+              paramString += "parameter " + i + ": " + el + "<br>";
+            });
+          }
+          document.getElementById('positions').innerHTML = paramString;
+
+          document.getElementById('string').innerHTML = parameters[6];
+        }
+        positionLoop();
+				
+				var canvasInput = document.getElementById('canvas');
+				var cc = canvasInput.getContext('2d');
+				function drawLoop() {
+          requestAnimationFrame(drawLoop);
+          cc.clearRect(0, 0, canvasInput.width, canvasInput.height);
+          ctracker.draw(canvasInput);
+        }
+        drawLoop();
+			</script>
+		</div>
+	</body>
+</html>

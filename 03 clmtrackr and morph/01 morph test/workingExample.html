@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - animation - morph targets</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#000;
+				color:#fff;
+				padding:0;
+				margin:0;
+				font-weight: bold;
+				overflow:hidden;
+			}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				color: #ffffff;
+				padding: 5px;
+				font-family: Monospace;
+				font-size: 13px;
+				text-align: center;
+				z-index:100;
+			}
+
+			#ctrl {
+				position: absolute;
+				top: 0px;
+				left: 0px;
+				width: 200px;
+				color: #ffffff;
+				padding: 5px;
+				font-family: Monospace;
+				font-size: 13px;
+				z-index:100;
+			}
+			#webgl {
+				position: absolute;
+    			right: 0px;
+    			top: 0px;
+    			background-color: red;
+			}
+
+
+			a { color:red }
+
+		</style>
+	</head>
+
+	<body>
+		<div id="info">
+			<a href="http://threejs.org" target="_blank">three.js</a> - WebGL morph target example
+		</div>
+
+
+		<div id="ctrl">
+			Use controls to change morph target influences:<br/>
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 0 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 1 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 2 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 3 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 4 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 5 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 6 ] = this.value/100;" />
+			<input type="range" value="0" min="0" max="100" onchange="mesh.morphTargetInfluences[ 7 ] = this.value/100;" />
+		</div>
+
+
+		<script src="lib/three.min.js"></script>
+
+		<script src="lib/Detector.js"></script>
+		<script src="lib/stats.min.js"></script>
+
+		<script>
+			var mesh;
+
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+			var container, stats;
+
+			var camera, scene, renderer;
+
+			var geometry, objects;
+
+			var mouseX = 0, mouseY = 0;
+
+			var mesh;
+
+			init();
+
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				scene = new THREE.Scene();
+
+				camera = new THREE.PerspectiveCamera( 45, 640/ 480 , 0.1, 15000 );
+				camera.position.z = 0.3;
+					camera.position.y = -0.3;
+
+			    camera.lookAt( new THREE.Vector3(0, 0, 0) );
+			    scene.add(camera);
+
+
+				scene.fog = new THREE.Fog( 0x000000, 1, 15000 );
+
+				var light = new THREE.PointLight( 0xffffff );
+				light.position.set( 100, 100, 100 );
+				scene.add( light );
+
+				var light = new THREE.AmbientLight( 0x111111 );
+				scene.add( light );
+
+
+				var loader = new THREE.JSONLoader();
+	            loader.load("obj/params_mask.json.js", function( geometry ) {
+	                // here i'm creating the model
+	                //THREE.GeometryUtils.center(geometry);
+
+	                //It's very important to set morphTargets: true in the material!
+	                mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial( { morphTargets: true, ambient: 0x000000, specular: 0x999999, shininess: 30, side: THREE.DoubleSide, shading: THREE.SmoothShading }));
+
+	                scene.add( mesh );
+	                animate();
+	            },"js");
+
+				renderer = new THREE.WebGLRenderer(  );
+				renderer.setSize( 640, 480 );
+				renderer.sortObjects = false;
+				container.appendChild( renderer.domElement );
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+				render();
+
+			}
+
+			function render() {
+
+				camera.lookAt( scene.position );
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+
+	</body>
+</html>

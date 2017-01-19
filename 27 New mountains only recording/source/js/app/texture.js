@@ -1,0 +1,24 @@
+define( ["three"], function ( THREE ) {
+  var texturePath = "js/textures/";
+  var sky = THREE.ImageUtils.loadTexture( "img/TychoSkymap2.png" );
+  var suntex = THREE.ImageUtils.loadTexture( texturePath + "suntex.jpg" );
+
+  var textures = {
+    sky: sky,
+    grass: THREE.ImageUtils.loadTexture( texturePath + "grass.jpg" ),
+    rock: THREE.ImageUtils.loadTexture( texturePath + "rock.jpg" ),
+    snow: THREE.ImageUtils.loadTexture( texturePath + "snow.jpg" ),
+    sun: suntex,
+  };
+
+  for ( var t in textures ) {
+    if ( textures.hasOwnProperty( t ) ) {
+      textures[t].wrapS = textures[t].wrapT = THREE.RepeatWrapping;
+    }
+  }
+  sky.wrapS = sky.wrapT = THREE.MirroredRepeatWrapping;
+//  sky.repeat.set( 2, 2 );
+sky.repeat.set( 1, 1 );
+
+  return textures;
+} );

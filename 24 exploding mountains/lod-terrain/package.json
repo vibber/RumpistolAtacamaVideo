@@ -1,0 +1,13 @@
+{
+  "name": "Node webkit",
+  "main": "index.html",
+  "chromium-args": "--enable-web-midi --enable-web-audio",
+  "webkit": {
+    "plugin": true
+  },
+  "window": {
+    "frame": true,
+    "width":640,
+    "height":360
+  }
+}

@@ -1,0 +1,30 @@
+<html>
+<head>
+	<script>
+		var midi;
+
+		// Web midi input (--enable-web-midi)
+
+		try {
+			navigator.requestMIDIAccess().then( onMIDISuccess, onMIDIFailure );
+		} catch(e) {
+			console.error(e);
+		}
+
+		///////////////////
+		function onMIDISuccess( midiAccess ) {
+			midi = midiAccess;
+		  console.log( "MIDI ready!" );
+		  console.log( "output", midiAccess.outputs() );
+		}
+
+		///////////////////
+		function onMIDIFailure(msg) {
+		  console.log( "Failed to get MIDI access - " + msg );
+		}
+
+	</script>
+</head>
+<body>
+</body>
+</htnl>

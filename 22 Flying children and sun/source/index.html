@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js shader</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background-color: #000000;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+
+		<script src="js/libs/three66.js"></script>
+		<script src="js/loaders/ColladaLoader.js"></script>
+
+        <script src="js/shaders/CopyShader.js"></script>
+        <script src="js/postprocessing/EffectComposer.js"></script>
+        <script src="js/postprocessing/RenderPass.js"></script>
+        <script src="js/postprocessing/MaskPass.js"></script>
+        <script src="js/postprocessing/ShaderPass.js"></script>
+        <script src="js/shaders/FXAAShader.js"></script>
+        <script src="js/shaders/HorizontalBlurShader.js"></script>
+        <script src="js/shaders/VerticalBlurShader.js"></script>
+        <script src="js/libs/jquery-1.11.0.min.js"></script> 
+        <script src="js/vezerUtil.js"></script>
+        <script src="js/sliiderTimeline.js"></script>
+
+	<script type="x-shader/x-vertex" id="vertexShader">
+		varying vec2 vUv;
+
+		void main() {
+		   vUv = uv;
+		    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+		}
+	</script>
+
+	<script type="x-shader/x-vertex" id="fragmentShader">
+			// mod by vib 2014. Based on https://www.shadertoy.com/view/4dXGR4
+			// based on https://www.shadertoy.com/view/lsf3RH by
+			// trisomie21 (THANKS!)
+			// My apologies for the ugly code.
+			uniform vec3      iResolution;           // viewport resolution (in pixels)
+			uniform float     iGlobalTime;           // shader playback time (in seconds)
+			uniform sampler2D iChannel0; 
+			uniform int      selectLayer;			//0 = all layers. 1-4 outputs only those layers
+
+			varying vec2 vUv;
+
+			float snoise(vec3 uv, float res)	// by trisomie21
+			{
+				const vec3 s = vec3(1e0, 1e2, 1e4);
+				
+				uv *= res;
+				
+				vec3 uv0 = floor(mod(uv, res))*s;
+				vec3 uv1 = floor(mod(uv+vec3(1.), res))*s;
+				
+				vec3 f = fract(uv); f = f*f*(3.0-2.0*f);
+				
+				vec4 v = vec4(uv0.x+uv0.y+uv0.z, uv1.x+uv0.y+uv0.z,
+					      	  uv0.x+uv1.y+uv0.z, uv1.x+uv1.y+uv0.z);
+				
+				vec4 r = fract(sin(v*1e-3)*1e5);
+				float r0 = mix(mix(r.x, r.y, f.x), mix(r.z, r.w, f.x), f.y);
+				
+				r = fract(sin((v + uv1.z - uv0.z)*1e-3)*1e5);
+				float r1 = mix(mix(r.x, r.y, f.x), mix(r.z, r.w, f.x), f.y);
+				
+				return mix(r0, r1, f.z)*2.-1.;
+			}
+
+
+			void main(void)
+			{
+
+				float brightness	= 0.05;
+				float radius		= (0.24 + brightness * 0.2) * 0.25;
+				float invRadius 	= 1.0/radius;
+				
+				vec3 orange			= vec3( 0.8, 0.65, 0.3 );
+				vec3 orangeRed		= vec3( 0.8, 0.35, 0.1 );
+				float time		= iGlobalTime * 0.1;
+				float aspect	= iResolution.x/iResolution.y;
+				vec2 uv			= vUv;
+				vec2 p 			= -0.5 + uv;
+				p.x *= aspect;
+
+				//float fade		= pow( length( 2.0 * p ), 0.5 );
+				float fade		= pow( length( 2.5 * p ), 0.7 ) * 2.3; //Fade corona
+				float fVal1		= 1.0 - fade;
+				//float fVal2		= 1.0 - fade;
+				
+				float angle		= atan( p.x, p.y )/6.2832;
+				float dist		= length(p);
+				vec3 coord		= vec3( angle, dist, time * 0.1 );
+				
+				float newTime1	= abs( snoise( coord + vec3( 0.0, -time * ( 0.35 + brightness * 0.001 ), time * 0.015 ), 15.0 ) );
+				//float newTime2	= abs( snoise( coord + vec3( 0.0, -time * ( 0.15 + brightness * 0.001 ), time * 0.015 ), 45.0 ) );	
+				for( int i=1; i<=7; i++ ){
+					float power = pow( 2.0, float(i + 1) );
+					fVal1 += ( 0.5 / power ) * snoise( coord + vec3( 0.0, -time, time * 0.2 ), ( power * ( 10.0 ) * ( newTime1 + 1.0 ) ) );
+					//fVal2 += ( 0.5 / power ) * snoise( coord + vec3( 0.0, -time, time * 0.2 ), ( power * ( 25.0 ) * ( newTime2 + 1.0 ) ) );
+				}
+				
+				float corona		= pow( fVal1 * max( 1.1 - fade, 0.0 ), 2.0 ) * 50.0;
+				//corona				+= pow( fVal2 * max( 1.1 - fade, 0.0 ), 2.0 ) * 50.0;
+				corona				*= 1.2 - newTime1;
+				vec3 sphereNormal 	= vec3( 0.0, 0.0, 1.0 );
+				vec3 dir 			= vec3( 0.0 );
+				vec3 center			= vec3( 0.5, 0.5, 1.0 );
+				vec3 starSphere		= vec3( 0.0 );
+				
+				vec2 sp = -1.0 + 2.0 * uv;
+				sp.x *= aspect;
+				sp *= ( 2.0 - brightness );
+			  	float r = dot(sp,sp);
+				float f = (1.0-sqrt(abs(1.0-r)))/(r) + brightness * 0.5;
+				if( dist < radius ){
+					corona			*= pow( dist * invRadius, 24.0 );
+			  		vec2 newUv;
+			 		newUv.x = sp.x*f;
+			  		newUv.y = sp.y*f;
+					newUv += vec2( time, 0.0 );
+					
+					vec3 texSample 	= texture2D( iChannel0, newUv ).rgb;
+					float uOff		= ( texSample.g * brightness * 4.5 + time );
+					vec2 starUV		= newUv + vec2( uOff, 0.0 );
+					starSphere		= texture2D( iChannel0, starUV ).rgb;
+				}
+
+				//redefine vars
+				sp = -4.0 + 8.0 * uv; //Small sun
+				sp.x *= aspect;
+				sp *= ( 2.0 - brightness );
+			  	r = dot(sp,sp);
+				f = (1.0-sqrt(abs(1.0-r)))/(r) + brightness * 0.5;
+				//
+				
+				//float starGlow	= min( max( 1.0 - dist * ( 1.0 - brightness ), 0.0 ), 1.0 );
+				float starGlow	= min( max( 1.0 - dist * ( 1.0 - brightness ) *2.0, 0.0 ), 1.0 );  //sky color
+				if (selectLayer == 0) 
+				{
+					gl_FragColor.rgb	= vec3( f * ( 0.75 + brightness * 0.3 ) * orange ) + starSphere + corona * orange + starGlow * orangeRed;
+				}
+				else if (selectLayer == 1)
+				{
+					gl_FragColor.rgb	= vec3( f * ( 0.75 + brightness * 0.3 ) * orange );
+				}
+				else if (selectLayer == 2)
+				{
+					gl_FragColor.rgb	= starSphere;
+				}
+				else if (selectLayer == 3)
+				{
+					gl_FragColor.rgb	= corona * orange;
+				}
+				else if (selectLayer == 4)
+				{
+					gl_FragColor.rgb	= starGlow * orangeRed;
+				}
+
+				//gl_FragColor.rgb	= vec3( r );
+
+				gl_FragColor.a		= 1.0;
+			}		
+	</script>
+
+		<script>
+			//TO-dO
+			//Parameters for Sliider
+			//FXAA
+
+			var container;
+			var camera, scene, renderer, material;
+			var sky, groundMat, skyMat;
+			var FAR = 3.0, NEAR = -3.0;
+			var meshes;
+			var composer, effectFXAA, effectFXAA2;
+			var dirLightAbove, dirLightBelow, dirLightLeft, dirLightRight;
+			var midiDisabled = false;
+			var clock = new THREE.Clock(true);
+			var smoothMouse = {x: 0, y: 0};
+			var mouse = {x: 0, y: 0};
+			var vezerFPS = 30;
+			var currentFrame = 0;
+
+
+			//Apparantly this is important for FXAA 
+  			var dpr = (window.devicePixelRatio) ? window.devicePixelRatio : 1;
+
+
+		   //////////
+		   // PARAMETERS FOR SLIIDER
+
+		   function changeMorph1() {
+		   		meshes.children.forEach( function(mesh) {
+		   			mesh.morphTargetInfluences[0] = slii.inputs.morph1.value;
+		   		});
+		   }
+
+		   function changeMorph2() {
+		   		meshes.children.forEach( function(mesh) {
+		   			mesh.morphTargetInfluences[1] = slii.inputs.morph2.value;
+		   		});
+		   }
+
+		   function changeMorph3() {
+		   		meshes.children.forEach( function(mesh) {
+		   			mesh.morphTargetInfluences[2] = slii.inputs.morph3.value;
+		   		});
+		   }
+
+		    var slii = {};
+		    slii.inputs = {
+		        globalSpeed: { type: "number", label: "0. Global Speed", value: 1, maxValue: 2, minValue: 0.0 },
+		        lightAboveIntensity: { type: "number", label: "1. Light Above", value: 2, maxValue: 4, minValue: 0.0 },
+		        lightBelowIntensity: { type: "number", label: "2. Light Below", value: 1.5, maxValue: 4, minValue: 0.0 },
+		        lightLeftIntensity: { type: "number", label: "3. Light Left", value: 1.5, maxValue: 4, minValue: 0.0 },
+		        lightRightIntensity: { type: "number", label: "4. Light Right", value: 2, maxValue: 4, minValue: 0.0 },
+            	meshVisible: { type: "toggle", label: "5. Display humans", value: 1 },
+            	morph1: { type: "number", label: "6. Morph 1", value: 0, maxValue: 1, minValue: 0, onChange: changeMorph1},
+            	morph2: { type: "number", label: "7. Morph 2", value: 0, maxValue: 1, minValue: 0, onChange: changeMorph2},
+            	morph3: { type: "number", label: "8. Morph 3", value: 0.6, maxValue: 1, minValue: 0, onChange: changeMorph3},
+		        cameraPosZ: { type: "number", label: "9. Camera position Z", value: 2, maxValue: 4, minValue: 0.0 },
+		        cameraPosY: { type: "number", label: "10. Camera position Z", value: -1.2, maxValue: 0, minValue: -1.7 },
+				//selectMidi: { type: "dropdown", label: "Select midi input", options: valuesForMidiInput, onChange: changeMidiInput }
+		    }
+
+			function init() {
+		      /////////
+		      // TIMELINE 
+		      
+		      tracks = vezerUtil.parse('data/benFlying.xml');
+		      sliiderTimeline.init(tracks);
+
+		      sliiderTimeline.autoBind( slii.inputs );
+
+				container = document.getElementById( 'container' );
+
+				/////////////////////
+				// SCENE
+ 
+				scene = new THREE.Scene(); 
+				//scene.fog = new THREE.Fog(0x000000, 1, 3);
+
+				var suntex = THREE.ImageUtils.loadTexture( "textures/suntex.jpg" );
+
+				suntex.wrapS = suntex.wrapT = THREE.RepeatWrapping;
+
+			    skyMat = new THREE.ShaderMaterial( {
+			      uniforms: {
+			          iGlobalTime: { type: "f",  value: 1.0 },
+			          iResolution: { type: "v3", value: new THREE.Vector3(1024, 1024, 1024) },
+			          iChannel0: { type: "t", value: suntex },
+			      },
+			      vertexShader:document.getElementById('vertexShader').textContent,
+			      fragmentShader:document.getElementById('fragmentShader').textContent,
+			      side: THREE.DoubleSide
+			    } );
+
+				var geometry = new THREE.PlaneGeometry(20, 20); 				
+				sky = new THREE.Mesh(geometry, skyMat); 
+				sky.rotation.x = Math.PI/2;
+				sky.position.y = 3;
+				scene.add(sky); 
+
+				//MESHES
+				meshes = new THREE.Object3D();
+				scene.add(meshes);
+
+				redMaterial = new THREE.MeshPhongMaterial( { emissive: 0x4d1904, morphTargets: true, morphNormals: true } );
+
+				var loader = new THREE.ColladaLoader();
+				loader.options.convertUpAxis = true;
+				loader.load( 'mesh/benHanging/Ben1.dae', function ( collada ) {
+				  	daemodel = collada.scene.children[0].children[0];
+
+					// MORPHS
+
+				  	daemodel.material.materials.forEach(function(material) {
+				  		material.morphTargets = true;  // Important for morph
+				  		material.morphNormals = true;  // Important for morph
+				  	});
+					
+					var loader2 = new THREE.ColladaLoader();
+					loader2.load( 'mesh/benHanging/Ben2.dae', function ( collada2 ) {
+						var morphmodel = collada2.scene.children[0].children[0];
+						daemodel.geometry.morphTargets.push( { name: "target1", vertices: morphmodel.geometry.vertices } );
+						daemodel.geometry.morphTargetsNeedUpdate = true;
+
+						var loader3 = new THREE.ColladaLoader();
+						loader3.load( 'mesh/benHanging/Ben4.dae', function ( collada3 ) {
+							var morphmodel2 = collada3.scene.children[0].children[0];
+							daemodel.geometry.morphTargets.push( { name: "target2", vertices: morphmodel2.geometry.vertices } );
+							daemodel.geometry.morphTargetsNeedUpdate = true;
+
+							var loader4 = new THREE.ColladaLoader();
+							loader4.load( 'mesh/benHanging/Ben5.dae', function ( collada4 ) {
+								var morphmodel3 = collada4.scene.children[0].children[0];
+								daemodel.geometry.morphTargets.push( { name: "target3", vertices: morphmodel3.geometry.vertices } );
+								daemodel.geometry.morphTargetsNeedUpdate = true;
+
+								daemodel.geometry.computeMorphNormals();
+
+
+								//Create clones
+
+							  	for (var i = 0; i < 8; i++) {
+							  		var mesh = new THREE.Mesh( daemodel.geometry, redMaterial );
+							  		//var posX = (i/8) * 6 - 3;
+							  		var posX = ((i/8) * 1.7)-1;
+							  		var posZ = (Math.random() * (NEAR - FAR)) + FAR;
+							  		var posY = (Math.random() * 6) - 4;
+							  		mesh.position.set(posX, posY, posZ);
+							  		mesh.rotation.y = Math.random() * Math.PI * 2;
+							  		mesh.scale.set(1.5,1.5,1.5);
+							  		//mesh.visible = false;
+							  		meshes.add(mesh);
+							  		// console.log(meshes);
+							  		changeMorph3();
+							  	}
+
+							});
+						});
+					});
+				});
+
+				// CAMERA
+
+				camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000); 
+				camera.position.y = -4; 
+				camera.position.z = 0;
+				camera.lookAt(new THREE.Vector3( 0, 1, 0 )); 
+
+				// LIGHTS
+
+				dirLightAbove = new THREE.DirectionalLight( 0xfe9839, 2 );
+				dirLightAbove.position.set(0, 4, -0);
+				scene.add(dirLightAbove);
+
+				dirLightBelow = new THREE.DirectionalLight( 0xe7b257, 2);
+				dirLightBelow.position.set(0, 4, -0.8);
+				scene.add(dirLightBelow);
+
+				dirLightLeft = new THREE.DirectionalLight( 0xffd05e, 2);
+				dirLightLeft.position.set(0, 4, 0.2);
+				scene.add(dirLightLeft);
+
+				dirLightRight = new THREE.DirectionalLight( 0x000000, 0);
+				dirLightRight.position.set(1, 0, -1.2);
+				scene.add(dirLightRight);
+
+				//////////////
+				// RENDERER
+
+				renderer = new THREE.WebGLRenderer({ alpha: false, antialias: true });
+				//renderer.setClearColor( scene.fog.color, 1 );
+				container.appendChild( renderer.domElement );
+
+				//////////////
+			    //Post effects
+
+			    renderScene = new THREE.RenderPass(scene, camera);	    
+			    
+			    effectFXAA = new THREE.ShaderPass(THREE.FXAAShader);
+			    effectFXAA.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+			    effectFXAA.renderToScreen = true;
+
+			    composer = new THREE.EffectComposer(renderer);
+			    composer.setSize(window.innerWidth * dpr, window.innerHeight * dpr);
+			    composer.addPass(renderScene);
+			    composer.addPass(effectFXAA);
+			    //composer.addPass(effectFXAA2);		
+
+			          // Mouse input
+			document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+			window.addEventListener( 'resize', onWindowResize, false );
+				onWindowResize();
+				animate();
+			}
+
+			function onDocumentMouseMove(event) {
+
+				mouse.x = ( event.clientX - (window.innerWidth / 2) );
+				mouse.y = ( event.clientY - (window.innerHeight / 2) );
+
+			}
+
+			function onWindowResize( event ) {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );		    
+
+				effectFXAA.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+        		//effectFXAA2.uniforms['resolution'].value.set(1 / (window.innerWidth * dpr), 1 / (window.innerHeight * dpr));
+          		composer.setSize(window.innerWidth * dpr, window.innerHeight * dpr);
+			}
+
+			function animate() {
+				requestAnimationFrame( animate );
+				render();
+			}
+
+			function render() {	
+
+				  //////////
+			      // TIMELINE
+
+			      // var vezerFrame = Math.floor(currentFrame * 1/(60 / vezerFPS));
+			      // sliiderTimeline.setValues(vezerFrame);
+
+
+				// ANIMATE MESH
+
+				for (i = 0; i < meshes.children.length; i++) {
+					var mesh = meshes.children[i];
+
+				// 	//Rotation
+
+					mesh.rotation.y += 0.005 * slii.inputs.globalSpeed.value;
+
+				// 	//Position
+
+					if(mesh.position.y <= 4 && mesh.position.y >= -4 ) {
+						mesh.position.y += 0.001;
+					} else {
+						mesh.position.y = -4;
+					}
+				}
+
+				//CAMERA
+
+				camera.rotation.z += 0.002;
+
+				//CAMERA
+
+			    //   var smooth = 0.02;
+			    //   smoothMouse.x += smooth * ( mouse.x - smoothMouse.x );
+			    //   smoothMouse.y += smooth * ( mouse.y - smoothMouse.y );
+
+							// //var time = 0.3 * clock.getElapsedTime();
+							// var time = 0.3 * currentFrame / vezerFPS;
+			    //   			camera.position.x = 2 * Math.cos( time / 3 );
+			    //   			camera.position.y = 3 * Math.sin( time / 4 );
+
+
+			    //   			      // Look left right
+			    //   var look = new THREE.Vector3( 0, 0, -4 );
+			    //   look.sub( camera.position );
+			    //   look.normalize();
+			    //   var across = new THREE.Vector3().crossVectors( look, camera.up );
+			    //   across.multiplyScalar( smoothMouse.x / 333 );
+			    //   camera.position.add( across );
+			    //   camera.up.add( across.multiplyScalar( -0.005 ) );
+			    //   //camera.up.add( across.multiplyScalar( -0.005 * 0.5 ) );
+
+				/////////////
+				// UPDATE SLIIDER PARAMETERS
+
+				// camera.position.y = slii.inputs.cameraPosY.value;
+				// camera.position.z = slii.inputs.cameraPosZ.value;
+				dirLightAbove.intensity = slii.inputs.lightAboveIntensity.value;
+				dirLightBelow.intensity = slii.inputs.lightBelowIntensity.value;
+				dirLightLeft.intensity = slii.inputs.lightLeftIntensity.value;
+				dirLightRight.intensity = slii.inputs.lightRightIntensity.value;
+
+		      //Sun shader
+		      skyMat.uniforms.iGlobalTime.value = 0.1 * (currentFrame / vezerFPS);
+
+				/////////////
+				// Render
+			
+			  	composer.render();
+				//renderer.render( scene, camera );
+
+				currentFrame++;
+			}
+
+			/////////////////////
+			// START init() function when document is ready
+			document.addEventListener("DOMContentLoaded", init, false);
+
+		</script>
+	</head>
+	<body>
+		<div id="container"></div>
+	</body>
+</html>
